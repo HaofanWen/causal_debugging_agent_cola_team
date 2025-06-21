@@ -1,5 +1,3 @@
-# 文件：evaluate_predictions.py
-
 import os
 import sys
 import re
@@ -23,7 +21,7 @@ def normalize(text: str) -> str:
     return core
 
 def main():
-    # 1. 加载 GAIA 验证集
+    # 1. load GAIA validation set
     ds = load_dataset(
         "gaia-benchmark/GAIA",
         "2023_all",
@@ -31,7 +29,15 @@ def main():
         trust_remote_code=True
     )
 
-    # 2. 加载 SQuAD 风格指标
+    print("Total tasks in split:", len(ds))
+    count = sum(
+        1
+        for tid in ds["task_id"]
+        if os.path.exists(f"./output/answer_{tid}.txt")
+    )
+    print("Predictions found for:", count)
+
+    # 2. load SQuAD style indicator
     squad = evaluate.load("squad")
 
     sq_preds = []
@@ -61,21 +67,20 @@ def main():
     if not sq_preds:
         raise RuntimeError("No predictions found in ./output")
 
-    # 3. 调用 compute
+    # 3. call compute
     results = squad.compute(predictions=sq_preds, references=sq_refs)
 
-    # 4. 自动识别 exact / exact_match 字段
+    # 4. automatic recognition of exact / exact_match fields
     exact_key = "exact"
     if exact_key not in results:
         exact_key = "exact_match" if "exact_match" in results else None
 
     f1_key = "f1"
     if f1_key not in results:
-        # 有的版本可能叫 'f1_score'
         f1_key = "f1_score" if "f1_score" in results else None
 
     if exact_key is None and f1_key is None:
-        print("⚠️ squad.compute 返回字段：", results.keys())
+        print("⚠️ squad.compute Return fields：", results.keys())
         raise KeyError("Can't find exact or f1 in the results.")
 
     if exact_key:

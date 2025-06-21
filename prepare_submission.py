@@ -1,10 +1,10 @@
 import os
 import json
-from evaluate_predictions import extract_core_answer  # 你已有的方法
+from evaluate_predictions import extract_core_answer
 
 USERNAME = "HaofanWen"
 SPACE_URL = "https://huggingface.co/spaces/HaofanWen/causal_debugging_agent/tree/main"
-ANSWER_DIR = "./output"  # 或者你自己的 answers 文件夹
+ANSWER_DIR = "./output"
 
 answers = []
 

@@ -1,8 +1,6 @@
-# 文件：ollama_models.py
-
 from smolagents import LiteLLMModel
 
-# ─────── 主因果分析模型 ───────
+# ─────── principal causal analysis model ───────
 causal_analyzer = LiteLLMModel(
     llm_provider="ollama",
     model_id="ollama/nous-hermes2-mixtral:latest",
@@ -10,7 +8,7 @@ causal_analyzer = LiteLLMModel(
     api_key="ollama"
 )
 
-# ─────── 修复补丁生成模型 ───────
+# ─────── fixing patch generation models ───────
 repair_planner = LiteLLMModel(
     llm_provider="ollama",
     model_id="ollama/deepseek-coder-v2:16b",
@@ -18,7 +16,7 @@ repair_planner = LiteLLMModel(
     api_key="ollama"
 )
 
-# ─────── 验证与备用建议模型 ───────
+# ─────── validation and alternate recommendation modelling ───────
 verify_model = LiteLLMModel(
     llm_provider="ollama",
     model_id="ollama/llama3.1:8b",

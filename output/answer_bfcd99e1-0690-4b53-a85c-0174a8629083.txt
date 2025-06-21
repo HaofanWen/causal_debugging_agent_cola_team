@@ -1,0 +1,3 @@
+1. [Top-Level Causal Conclusion]: The user is analyzing applicant qualifications for a job position using conditional formatting in an Excel file and counting rows with only one missing qualification.
+2. [Causal Chain]:
+   a) Step 1 → Why

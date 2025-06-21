@@ -1,0 +1,3 @@
+1. [Top-Level Causal Conclusion]: The process cannot be completed due to a missing dependency for opening the attached file.
+2. [Causal Chain]:
+   a) Step 1 → Fails because an optional dependency 'openpyxl'
