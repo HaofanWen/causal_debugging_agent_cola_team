@@ -4,32 +4,33 @@ import requests
 import pandas as pd
 import gradio as gr
 
+# Scoring API endpoint
 API_SUBMIT_URL = "https://agents-course-unit4-scoring.hf.space/submit"
 
-def submit_existing_answers(profile: gr.OAuthProfile | None, file_path: str):
+def submit_existing_answers(file_path: str):
     """
-    Gradio callback: read uploaded JSON file at file_path,
-    submit to the scoring API, and return status + a DataFrame.
+    Gradio callback: read the uploaded JSON file at file_path,
+    submit its contents to the scoring API, and return a status message
+    and a table of the answers.
     """
-    # 1. Make sure user is logged in
-    if profile is None:
-        return "Please log in to Hugging Face first.", None
-
-    # 2. Load the JSON from the uploaded file path
+    # Load answers from the JSON file
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             answers = json.load(f)
     except Exception as e:
         return f"Failed to load JSON: {e}", None
 
-    # 3. Build the payload
+    # Determine the username (from env or placeholder)
+    username = os.getenv("HF_USERNAME", "<your-username>")
+
+    # Build payload for submission
     payload = {
-        "username": profile.username,
+        "username":   username,
         "agent_code": f"https://huggingface.co/spaces/{os.getenv('SPACE_ID')}/tree/main",
-        "answers": answers
+        "answers":    answers
     }
 
-    # 4. Send request and handle errors
+    # Send request to scoring API
     try:
         response = requests.post(API_SUBMIT_URL, json=payload, timeout=60)
         response.raise_for_status()
@@ -37,36 +38,43 @@ def submit_existing_answers(profile: gr.OAuthProfile | None, file_path: str):
     except Exception as e:
         return f"Submission failed: {e}", None
 
-    # 5. Format successful status
+    # Format a user-friendly status message
     status = (
         f"Submission Successful!\n"
         f"User: {data.get('username')}\n"
         f"Score: {data.get('score','N/A')}% "
-        f"({data.get('correct_count','?')}/{data.get('total_attempted','?')})"
+        f"({data.get('correct_count','?')}/{data.get('total_attempted','?')})\n"
+        f"Message: {data.get('message','')}"
     )
-    # 6. Return status and a pandas DataFrame
+
+    # Return the status and a DataFrame of the submitted answers
     return status, pd.DataFrame(answers)
 
-# Build Gradio interface
+# Build the Gradio interface
 with gr.Blocks() as demo:
-    # 1) Login button returns a gr.OAuthProfile
-    login_btn = gr.LoginButton()
+    gr.Markdown("# Submit Pre-Generated Answers")
+    gr.Markdown(
+        """
+        Upload your `output.json` (the JSON array of `{task_id, submitted_answer}` objects),
+        then click **Submit Uploaded Answers** to get your score.
+        """
+    )
 
-    # 2) File uploader (single JSON)
-    upload = gr.File(label="Upload output.json", file_types=[".json"])
-
-    # 3) Submit button
+    # File uploader for a single JSON file
+    upload     = gr.File(label="Upload output.json", file_types=[".json"])
+    # Button to trigger submission
     submit_btn = gr.Button("Submit Uploaded Answers")
-
-    # 4) Outputs
+    # Textbox to display status
     status_out = gr.Textbox(label="Submission Status", lines=5, interactive=False)
+    # Table to display the answers
     table_out  = gr.DataFrame(label="Answers Table")
 
-    # 5) Wire up callback: pass login_btn (profile) and upload (file path)
+    # Wire up the callback: only the uploaded file is passed as input
     submit_btn.click(
         fn=submit_existing_answers,
         inputs=[upload],
         outputs=[status_out, table_out]
     )
 
-    demo.launch()
+if __name__ == "__main__":
+    demo.launch(debug=True, share=False)
