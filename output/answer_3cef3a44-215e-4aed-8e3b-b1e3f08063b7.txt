@@ -1,1 +1,1 @@
-celery, green beans, lettuce, sweet potatoes, zucchini
+broccoli, celery, green beans, lettuce, zucchini

@@ -1,3 +1,0 @@
-1. [Top-Level Causal Conclusion]: The population difference between Seattle and Cathlamet in Washington is 736,455 people.
-2. [Causal Chain]:
-   a) Step 1 → User wants to find the population difference between two

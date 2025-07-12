@@ -1,72 +1,56 @@
-import os
 import json
+import os
+import requests
+import pandas as pd
 import gradio as gr
-from evaluate_predictions import extract_core_answer
 
-# File path definitions
-ANSWER_DIR = "./output"
-ANALYSIS_FILE = "./causal_outputs.jsonl"
+API_SUBMIT_URL = "https://agents-course-unit4-scoring.hf.space/submit"
 
-# Preload all causal analysis
-causal_map = {}
-if os.path.exists(ANALYSIS_FILE):
-    with open(ANALYSIS_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            record = json.loads(line)
-            causal_map[record["task_id"]] = record["causal_analysis"]
+def submit_existing_answers(profile: gr.OAuthProfile | None, file_obj):
+    """
+    Gradio callback: read uploaded JSON file of answers,
+    submit to the scoring API, and return status + a DataFrame.
+    """
+    if not profile:
+        return "Please log in to Hugging Face first.", None
 
-def load_answer(task_id):
-    path = os.path.join(ANSWER_DIR, f"answer_{task_id}.txt")
-    if not os.path.exists(path):
-        return "", "❌ Answer file not found", "❌ Causal analysis not found"
-    with open(path, "r", encoding="utf-8") as f:
-        raw = f.read().strip()
-    cleaned = extract_core_answer(raw)
-    analysis = causal_map.get(task_id, "⚠️ No corresponding analysis record")
-    return cleaned, raw, analysis
+    # Load the uploaded JSON
+    answers = json.load(file_obj)
 
-def export_submission():
-    answers = []
-    for fname in os.listdir(ANSWER_DIR):
-        if fname.startswith("answer_") and fname.endswith(".txt"):
-            task_id = fname[len("answer_"):-len(".txt")]
-            with open(os.path.join(ANSWER_DIR, fname), "r", encoding="utf-8") as f:
-                raw = f.read().strip()
-            cleaned = extract_core_answer(raw)
-            answers.append({"task_id": task_id, "submitted_answer": cleaned})
-
-    submission = {
-        "username": "HaofanWen",
-        "agent_code": "https://huggingface.co/spaces/HaofanWen/causal_debugging_agent/tree/main",
+    payload = {
+        "username": profile.username,
+        "agent_code": f"https://huggingface.co/spaces/{os.getenv('SPACE_ID')}/tree/main",
         "answers": answers
     }
 
-    with open("gaia_submission.json", "w", encoding="utf-8") as f:
-        json.dump(submission, f, indent=2, ensure_ascii=False)
+    # Call the scoring API
+    response = requests.post(API_SUBMIT_URL, json=payload, timeout=60)
+    response.raise_for_status()
+    data = response.json()
 
-    return f"✅ Exported {len(answers)} answers to gaia_submission.json"
+    # Build status message
+    status = (
+        f"Submission Successful!\n"
+        f"User: {data.get('username')}\n"
+        f"Score: {data.get('score','N/A')}% "
+        f"({data.get('correct_count','?')}/{data.get('total_attempted','?')})"
+    )
 
-with gr.Blocks(title="GAIA Agent Debugger") as demo:
-    gr.Markdown("## 🎯 GAIA Agent Debugging Interface\nEnter a task_id to view the answer and causal chain analysis")
+    # Return status and a DataFrame showing the answers
+    return status, pd.DataFrame(answers)
 
-    with gr.Row():
-        task_input = gr.Text(label="Enter Task ID (e.g. fe8f4748-5d00-4a27-9070-090a0cfdeac4)")
-        submit_btn = gr.Button("Search")
+# Then in your Gradio Blocks:
+with gr.Blocks() as demo:
+    # ... your existing components ...
+    upload = gr.File(label="Upload output.json", file_types=[".json"])
+    submit_btn = gr.Button("Submit Uploaded Answers")
+    status_out = gr.Textbox(label="Submission Status", lines=5, interactive=False)
+    table_out  = gr.DataFrame(label="Answers Table")
 
-    with gr.Row():
-        final_answer = gr.Text(label="🌟 Extracted Final Answer")
-        raw_answer = gr.Text(label="📝 Raw Answer Text")
+    submit_btn.click(
+        fn=submit_existing_answers,
+        inputs=[gr.State(), upload],
+        outputs=[status_out, table_out]
+    )
 
-    analysis_output = gr.Text(label="📘 Causal Analysis", lines=10)
-
-    submit_btn.click(fn=load_answer, inputs=[task_input],
-                     outputs=[final_answer, raw_answer, analysis_output])
-
-    gr.Markdown("---")
-    with gr.Row():
-        export_button = gr.Button("📥 Generate Submission JSON (gaia_submission.json)")
-        export_status = gr.Textbox(label="Export Status")
-
-    export_button.click(fn=export_submission, outputs=[export_status])
-
-demo.launch()
+    demo.launch()

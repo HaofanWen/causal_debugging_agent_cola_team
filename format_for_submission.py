@@ -1,32 +1,37 @@
 import os
 import json
 
-script_dir = os.path.abspath(os.path.dirname(__file__))
-output_dir = os.path.join(script_dir, 'output_test_0621')
-output_jsonl_path = os.path.join(output_dir, 'output.jsonl')
+# Directory where individual answer text files live
+ANSWERS_DIR = os.path.join(os.path.dirname(__file__), 'answers')
+OUTPUT_PATH = os.path.join(ANSWERS_DIR, 'output.json')
 
-if not os.path.exists(output_dir):
-    raise FileNotFoundError(f"❌ output file not exists: {output_dir}")
+def main():
+    """
+    Read all answer_*.txt files, build a list of {task_id, submitted_answer},
+    and write them as one JSON array to output.json.
+    """
+    submission_list = []
 
-# Collect all answer_*.txt files
-submission_data = []
-for filename in os.listdir(output_dir):
-    if filename.startswith("answer_") and filename.endswith(".txt"):
-        task_id = filename[len("answer_"):-len(".txt")]
-        filepath = os.path.join(output_dir, filename)
+    # Iterate over sorted files like answer_1001.txt, answer_1002.txt, ...
+    for filename in sorted(os.listdir(ANSWERS_DIR)):
+        if filename.startswith("answer_") and filename.endswith(".txt"):
+            task_id = filename[len("answer_"):-4]  # strip prefix/suffix
+            file_path = os.path.join(ANSWERS_DIR, filename)
 
-        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            model_answer = f.read().strip()
+            # Read the answer text
+            with open(file_path, encoding='utf-8', errors='ignore') as f:
+                answer_text = f.read().strip()
 
-        submission_data.append({
-            "task_id": task_id,
-            "model_answer": model_answer
-        })
+            submission_list.append({
+                "task_id": task_id,
+                "submitted_answer": answer_text
+            })
 
-# write down output.jsonl
-with open(output_jsonl_path, "w", encoding="utf-8") as f:
-    for item in submission_data:
-        json.dump(item, f, ensure_ascii=False)
-        f.write("\n")
+    # Write the list as a JSON array
+    with open(OUTPUT_PATH, 'w', encoding='utf-8') as out_file:
+        json.dump(submission_list, out_file, ensure_ascii=False, indent=2)
 
-print(f"✅ Successfully wrote {len(submission_data)} results to {output_jsonl_path}.")
+    print(f"Wrote {len(submission_list)} entries to {OUTPUT_PATH}")
+
+if __name__ == "__main__":
+    main()
