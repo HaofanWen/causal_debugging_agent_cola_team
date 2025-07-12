@@ -65,7 +65,7 @@ with gr.Blocks() as demo:
     # 5) Wire up callback: pass login_btn (profile) and upload (file path)
     submit_btn.click(
         fn=submit_existing_answers,
-        inputs=[login_btn, upload],
+        inputs=[upload],
         outputs=[status_out, table_out]
     )
 
