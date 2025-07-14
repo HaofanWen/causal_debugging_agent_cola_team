@@ -1,203 +1,120 @@
-import os
 import json
-import argparse
+from smolagents import LiteLLMModel
+from langchain_core.messages import HumanMessage, AIMessage
 
-from ollama_models import repair_planner, verify_model
+repair_planner = LiteLLMModel(
+    llm_provider="ollama",
+    model_id="ollama/deepseek-coder-v2:16b",
+    api_base="http://localhost:11434",
+    api_key="ollama"
+)
 
-# k = 5, 2 level 1 questions, 2 level 2 questions, 1 level 3 question.
-examples = [
-    {
-      "Question": "How many at bats did the Yankee with the most walks in the 1977 regular season have that same season?",
-      "Answer": "519"
-    },
-    {
-      "Question": "What was the actual enrollment count of the clinical trial on H. pylori in acne vulgaris patients from Jan-May 2018 as listed on the NIH website?",
-      "Answer": "90"
-    },
-    {
-      "Question": "When was a picture of St. Thomas Aquinas first added to the Wikipedia page on the Principle of double effect? Answer using the format DD/MM/YYYY.",
-      "Answer": "19/02/2009"
-    },
-    {
-        "Question": "According to the USGS, in what year was the American Alligator first found west of Texas (not including Texas)?",
-        "Answer": "1954"
-    },
-    {
-        "Question": "Which of the fruits shown in the 2008 painting \"Embroidery from Uzbekistan\" were served as part of the October 1949 breakfast menu for the ocean liner that was later used as a floating prop for the film \"The Last Voyage\"? Give the items as a comma-separated list, ordering them in clockwise order based on their arrangement in the painting starting from the 12 o'clock position. Use the plural form of each fruit.",
-        "Answer": "pears, bananas"
-    },
-]
+# Load a handful of few-shot examples for code repair
+# load few-shot examples for code repair
+examples = []
+with open("bug_data/repair_example.jsonl", encoding="utf-8") as f:
+    for line in f:
+        record = json.loads(line)
+        if record.get("type") == "code_repair":
+            examples.append(record)
 
-def build_few_shot_prompt(examples, question, analysis=None):
-    prompt = (
-        "You are answering GAIA questions. "
-        "**ONLY output the final answer exactly as shown—no explanations, no steps.**\n\n"
-    )
-    for ex in examples:
-        prompt += f"Q: {ex['Question']}\nA: {ex['Answer']}\n\n"
-    prompt += f"Now answer this question:\nQ: {question}\n"
-    if analysis:
-        prompt += f"\nCausal analysis:\n{analysis}\n"
-    prompt += "A:"
-    return prompt
+def build_repair_prompt(question: str, code: str, examples: list[dict]) -> str:
+    """
+    Construct a few-shot prompt for the repair planner:
+    - Show 2–3 examples of Question+code → Final answer
+    - Then present the real Question and code
+    - Instruct the model to output full patched code plus a brief explanation.
+    """
+    # Take the first 2 examples
+    few = examples[:3]
+    parts = [
+        "You are a multi-language code repair assistant (Java, Python, C++, etc.).",
+        "For each “Fix the following buggy XXX function.” prompt and its code snippet,",
+        "output:\n  1) A complete, compilable patched version in the same language,\n",
+        "  2) A brief explanation of your changes.",
+        ""
+    ]
+    # Insert few-shot examples
+    for ex in few:
+        parts.append("### Example")
+        parts.append(f"Q: {ex['Question']}")
+        parts.append("```<auto-detect>")
+        parts.append(ex["code"])
+        parts.append("```")
+        parts.append("Patched code:")
+        parts.append("```java")  # or the language tag of that example
+        parts.append(ex["Final answer"])
+        parts.append("```")
+        parts.append("")
+    # Now the real task
+    parts.append("### Now please repair this:")
+    parts.append(f"Q: {question}")
+    parts.append("```<auto-detect>")
+    parts.append(code)
+    parts.append("```")
+    parts.append("Patched code:")
+    parts.append("```<same-language-as-above>")
+    parts.append("# your patched code here")
+    parts.append("```")
+    parts.append("Explanation:")
+    parts.append("- …")
+    return "\n".join(parts)
 
-def generate_code_patch(analysis: str, code: str, max_tokens: int = 2048) -> str:
-    prompt = (
-        "Below is a causal-chain analysis of why a code snippet failed:\n\n"
-        f"{analysis}\n\n"
-        "Original code (language to be detected):\n"
-        "```<auto-detect>\n"
-        f"{code}\n"
-        "```\n\n"
-        "Please do the following:\n"
-        "1. Automatically detect the programming language of the original code.\n"
-        "2. Provide a complete patched version in the same language,\n"
-        "   enclosed in triple backticks tagged with that language (e.g. ```java, ```python, etc.).\n"
-        "3. Include a brief explanation of your changes below the code.\n\n"
-        "```<same-language-as-above>\n"
-        "# patched code here\n"
-        "```\n\n"
-        "Explanation:\n"
-        "- ...\n"
-    )
+def generate_code_patch(question: str, code: str, examples: list[dict]) -> str:
+    """
+    Build the prompt and call the repair planner.
+    """
+    prompt = build_repair_prompt(question, code, examples)
     resp = repair_planner.client.completion(
         model="ollama/deepseek-coder-v2:16b",
         provider="ollama",
         api_base="http://localhost:11434",
         api_key="ollama",
-        messages=[{"role":"user","content":prompt}],
-        max_tokens=max_tokens,
-        temperature=0.0,  # Turn off random sampling → Greedy decoding
-        top_p=1.0,  # Guaranteed not to truncate the probability space
-        seed=0,  # Fixed random seed
-        stream=False
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=2048,
+        temperature=0.0,
+        top_p=1.0,
+        seed=0,
+        stream=False,
     )
+    # Return the full content (patched code + explanation)
     return resp.choices[0].message.content
 
-def generate_text_fix(analysis: str, question: str, max_tokens: int = 2048) -> str:
-    prompt = (
-        "Below is a user’s question and a causal-chain analysis of a previous reasoning attempt.\n\n"
-        "Question:\n"
-        f"{question}\n\n"
-        "Causal-Chain Analysis:\n"
-        f"{analysis}\n\n"
-        "Please do ONLY the following:\n"
-        "1. Provide the fully corrected final answer in English.\n"
-        "2. Do NOT include any reasoning steps, analysis, or extra commentary.\n"
-        "3. If multiple points are needed, list them as short numbered items.\n\n"
-        "Examples of desired behavior:\n"
-        "Standard Answer: 3\n"
-        "Incorrect Prediction: The final answer is 3.\n\n"
-        "Standard Answer: 50\n"
-        "Incorrect Prediction: This man is 50 years old.\n\n"
-        "Final Answer:"
-    )
-    resp = verify_model.client.completion(
-        model="ollama/llama3.1:8b",
-        provider="ollama",
-        api_base="http://localhost:11434",
-        api_key="ollama",
-        messages=[{"role":"user","content":prompt}],
-        max_tokens=max_tokens,
-        temperature=0.0,  # Turn off random sampling → Greedy decoding
-        top_p=1.0,  # Guaranteed not to truncate the probability space
-        seed=0,  # Fixed random seed
-        stream=False
-    )
-    # resp = verify_model.client.completion(
-    #     model="ollama/nous-hermes2-mixtral:latest",
-    #     provider="ollama",
-    #     api_base="http://localhost:11434",
-    #     api_key="ollama",
-    #     messages=[{"role": "user", "content": prompt}],
-    #     max_tokens=max_tokens,
-    #     stream=False
-    # )
-    return resp.choices[0].message.content.strip()
+def build_graph():
+    """
+    Returns a RepairAgent whose .invoke() expects:
+       {"messages":[HumanMessage(content=prompt_string)]}
+    and returns:
+       {"messages":[AIMessage(content=patched_code_and_explanation)]}
+    """
+    class RepairAgent:
+        def __init__(self, max_tokens: int = 2048):
+            self.max_tokens = max_tokens
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Batch repair: generate answer_<task_id>.txt for all GAIA tasks"
-    )
-    parser.add_argument(
-        "--analysis-jsonl", required=True,
-        help="Path to causal_outputs.jsonl"
-    )
-    parser.add_argument(
-        "--metadata-jsonl", required=True,
-        help="Path to GAIA validation metadata.jsonl"
-    )
-    parser.add_argument(
-        "--code-dir", default="",
-        help="Directory where code files (<task_id>.py) are stored"
-    )
-    parser.add_argument(
-        "--output-dir", default="answers",
-        help="Directory to write answer_<task_id>.txt files"
-    )
-    args = parser.parse_args()
+        def invoke(self, inputs: dict) -> dict:
+            # 1) extract the raw prompt
+            msgs = inputs.get("messages", [])
+            if not msgs or not isinstance(msgs[0], HumanMessage):
+                raise ValueError("RepairAgent.invoke requires a HumanMessage in inputs['messages']")
+            prompt = msgs[0].content
 
-    os.makedirs(args.output_dir, exist_ok=True)
+            # 2) here, we assume `prompt` already contains the Question + code + few-shot examples
+            #    so we just send it to the planner
+            resp = repair_planner.client.completion(
+                model="ollama/deepseek-coder-v2:16b",
+                provider="ollama",
+                api_base="http://localhost:11434",
+                api_key="ollama",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.max_tokens,
+                temperature=0.0,
+                top_p=1.0,
+                seed=0,
+                stream=False,
+            )
+            patched = resp.choices[0].message.content
 
-    # 1) Read metadata.jsonl, create task_id → metadata mapping
-    meta = {}
-    with open(args.metadata_jsonl, "r", encoding="utf-8") as f:
-        for line in f:
-            rec = json.loads(line)
-            tid = rec["task_id"]
-            meta[tid] = {
-                "question": rec.get("Question", "").strip(),
-                "file_name": rec.get("file_name", "").strip()
-            }
+            # 3) wrap in an AIMessage so it matches the agent API
+            return {"messages": [AIMessage(content=patched)]}
 
-    # 2) ergodic causal_outputs.jsonl
-    with open(args.analysis_jsonl, "r", encoding="utf-8") as f:
-        for line in f:
-            rec = json.loads(line)
-            task_id = rec["task_id"]
-            analysis = rec["causal_analysis"]
-            info = meta.get(task_id, {})
-            question = info.get("question", "")
-            file_name = info.get("file_name", "")
-            is_code = file_name.lower().endswith(".py")
-
-            # 3) Generation logic is selected based on the availability of code files
-            if is_code and args.code_dir:
-                code_path = os.path.join(args.code_dir, file_name)
-                if os.path.isfile(code_path):
-                    code = open(code_path, encoding="utf-8").read()
-                    answer_text = generate_code_patch(analysis, code)
-                else:
-                    print(f"[WARN] Code not found for {task_id}, generating text answer instead.")
-                    answer_text = generate_text_fix(analysis, question)
-            else:
-                # for non-code task, few-shot prompt
-                prompt = build_few_shot_prompt(examples, question, analysis)
-                resp = verify_model.client.completion(
-                    model="ollama/llama3.1:8b",
-                    provider="ollama",
-                    api_base="http://localhost:11434",
-                    api_key="ollama",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=50,
-                    temperature=0.0,  # Turn off random sampling → Greedy decoding
-                    top_p=1.0,  # Guaranteed not to truncate the probability space
-                    seed=0,  # Fixed random seed
-                    stream=False
-                )
-                # resp = verify_model.client.completion(
-                #     model="ollama/nous-hermes2-mixtral:latest",
-                #     provider="ollama",
-                #     api_base="http://localhost:11434",
-                #     api_key="ollama",
-                #     messages=[{"role": "user", "content": prompt}],
-                #     max_tokens=50,
-                #     stream=False
-                # )
-                answer_text = resp.choices[0].message.content.strip()
-
-            # 4) Write to unified answer_<task_id>.txt
-            out_path = os.path.join(args.output_dir, f"answer_{task_id}.txt")
-            with open(out_path, "w", encoding="utf-8") as outf:
-                outf.write(answer_text)
-            print(f"[OK] Wrote {out_path}")
+    return RepairAgent()

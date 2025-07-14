@@ -1,3 +1,0 @@
-The user seeks assistance in preparing for a Calculus mid-term exam after missing class on Friday, providing an audio recording of Professor Willowbrook's recommended reading titled "Homework.mp3". The AI will listen to the recording, compile and sort page numbers mentioned, and provide this information to the user while ensuring their needs are met.
-
-<ANSWER>

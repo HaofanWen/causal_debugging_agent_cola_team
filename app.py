@@ -21,7 +21,7 @@ def submit_existing_answers(file_path: str):
         return f"Failed to load JSON: {e}", None
 
     # Determine the username (from env or placeholder)
-    username = os.getenv("HF_USERNAME", "<your-username>")
+    username = os.getenv("HF_USERNAME", "<cola_team>")
 
     # Build payload for submission
     payload = {
