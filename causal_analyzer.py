@@ -19,46 +19,46 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 load_dotenv()
 
 @tool
-def wiki_search(query: str) -> str:
+def wiki_search(input: str) -> str:
     """Search Wikipedia for a query and return maximum 2 results.
 
     Args:
-        query: The search query."""
-    search_docs = WikipediaLoader(query=query, load_max_docs=2).load()
+        input: The search query."""
+    search_docs = WikipediaLoader(query=input, load_max_docs=2).load()
     formatted_search_docs = "\n\n---\n\n".join(
         [
             f'<Document source="{doc.metadata["source"]}" page="{doc.metadata.get("page", "")}"/>\n{doc.page_content}\n</Document>'
             for doc in search_docs
         ])
-    return {"wiki_results": formatted_search_docs}
+    return formatted_search_docs
 
 @tool
-def web_search(query: str) -> str:
-    """Search Tavily for a query and return maximum 3 results.
+def web_search(input: str) -> str:
+    """Search Tavily for a query and return maximum 2 results.
 
     Args:
-        query: The search query."""
-    search_docs = TavilySearchResults(max_results=3).invoke(query=query)
+        input: The search query."""
+    search_docs = TavilySearchResults(max_results=2).invoke(query=input)
     formatted_search_docs = "\n\n---\n\n".join(
         [
             f'<Document source="{doc.metadata["source"]}" page="{doc.metadata.get("page", "")}"/>\n{doc.page_content}\n</Document>'
             for doc in search_docs
         ])
-    return {"web_results": formatted_search_docs}
+    return formatted_search_docs
 
 @tool
-def arvix_search(query: str) -> str:
-    """Search Arxiv for a query and return maximum 3 result.
+def arvix_search(input: str) -> str:
+    """Search Arxiv for a query and return maximum 2 result.
 
     Args:
-        query: The search query."""
-    search_docs = ArxivLoader(query=query, load_max_docs=3).load()
+        input: The search query."""
+    search_docs = ArxivLoader(query=input, load_max_docs=2).load()
     formatted_search_docs = "\n\n---\n\n".join(
         [
             f'<Document source="{doc.metadata["source"]}" page="{doc.metadata.get("page", "")}"/>\n{doc.page_content[:1000]}\n</Document>'
             for doc in search_docs
         ])
-    return {"arvix_results": formatted_search_docs}
+    return formatted_search_docs
 
 
 
